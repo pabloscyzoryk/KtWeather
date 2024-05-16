@@ -8,4 +8,6 @@ Geoapify
 Ninija API
 Geocode
 
-and OpenMeteo for Weather Data.
+and OpenMeteo for historical Weather Data.
+
+This was my first encounter with making a project in C#.
