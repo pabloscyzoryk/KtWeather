@@ -1,0 +1,174 @@
+﻿@page "/"
+@attribute [StreamRendering]
+@rendermode InteractiveServer
+@inject ForecastClient ForecastClient
+@inject IGeolocationClient GeolocationService
+
+<PageTitle>KT Pogodynka App</PageTitle>
+
+<div class="d-flex justify-content-center">
+    <h1 class="mt-2">KT Pogodynka</h1>
+</div>
+<div class="row mt-2">
+    <EditForm Model="@location" OnSubmit="HandleSubmitAsync" Enhance FormName="locationSearch"
+        class="col-md-6 offset-md-3">
+        <div class="mt-2 input-group mb-3">
+            <InputText id="location" @bind-Value="location.Name" class="form-control" placeholder="Wprowadź lokalizację"
+                aria-label="Wprowadź lokalizację" aria-describedby="button-addon2" />
+            <div class="input-group-append">
+                @if (!isLoading)
+                {
+                    <button class="btn btn-primary submit-btn" type="submit" id="button-addon2">
+                        Sprawdź
+                    </button>
+                }
+                else
+                {
+                    <button disabled class="btn btn-primary submit-btn" type="submit" id="button-addon2">
+                        Poczekaj
+                    </button>
+                }
+
+            </div>
+        </div>
+    </EditForm>
+</div>
+
+<!-- Display Error -->
+@if (!string.IsNullOrEmpty(error))
+{
+    <div class="row">
+        <div class="col-md-6 offset-md-3">
+            <div class="alert alert-danger" role="alert">
+                @error
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Weather Forecast Cards -->
+<div class="row">
+    <div class="col-md-10 offset-md-1">
+        <h2>Prognoza dla: @foundLocation</h2>
+        <div class="card-deck mt-3">
+            <div class="card">
+                @foreach (var day in WeeklyTemp)
+                {
+                    <div class="card-body">
+                        <h5 class="card-title">@day.DayName</h5>
+                        <p class="card-text">Temperatura:
+                            @if (success)
+                            {
+                                <span>@Math.Round(day.Temperature, 2, MidpointRounding.AwayFromZero)°C</span>
+                            }
+                            else
+                            {
+                                <span>brak</span>
+                            }
+                        </p>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+    <a href="https://github.com/pabloscyzoryk">by Paweł Cyrzyk 2024</a>
+</div>
+
+@code {
+    [SupplyParameterFromForm]
+    public required Location location { get; set; }
+    private string error = string.Empty;
+    private string? foundLocation = string.Empty;
+    private int YEARS = 8;
+    private bool success = false;
+    private bool isLoading = false;
+    private List<WeekTemp> WeeklyTemp = new List<WeekTemp>
+    {
+        new WeekTemp { DayName = "Poniedziałek", Temperature = 0 },
+        new WeekTemp { DayName = "Wtorek", Temperature = 0 },
+        new WeekTemp { DayName = "Środa", Temperature = 0 },
+        new WeekTemp { DayName = "Czwartek", Temperature = 0 },
+        new WeekTemp { DayName = "Piątek", Temperature = 0 },
+        new WeekTemp { DayName = "Sobota", Temperature = 0 },
+        new WeekTemp { DayName = "Niedziela", Temperature = 0 },
+    };
+
+    private List<List<double>> TemperaturesYearly = new List<List<double>>();
+
+    private DateTime GetNextWeekday(DayOfWeek day)
+    {
+        DateTime result = DateTime.Now.AddDays(1);
+        while (result.DayOfWeek != day)
+            result = result.AddDays(1);
+        return result;
+    }
+
+    protected override void OnInitialized()
+    {
+        location = new Location()
+            {
+                Name = string.Empty
+            };
+    }
+
+    private async Task HandleSubmitAsync()
+    {
+        try
+        {
+            isLoading = true;
+            success = false;
+            error = string.Empty;
+
+            GeolocationResults results = await GeolocationService.GetCoords(location.Name);
+
+            string lat = results.Latitude;
+            string lon = results.Longitude;
+            foundLocation = results.DisplayName;
+
+            if(string.IsNullOrEmpty(lat) || string.IsNullOrEmpty(lon) || string.IsNullOrEmpty(foundLocation)) {
+                throw new Exception("Coord values are missing.");
+            }
+
+            DateTime nextMondayEightYearsAgo = GetNextWeekday(DayOfWeek.Monday).AddYears(YEARS * -1);
+
+            TemperaturesYearly.Clear();
+
+            for (int i = 0; i < YEARS; i++)
+            {
+                string startDate = nextMondayEightYearsAgo.AddYears(i).ToString("yyyy-MM-dd"); // start of the week
+                string endDate = nextMondayEightYearsAgo.AddYears(i).AddDays(6).ToString("yyyy-MM-dd"); // end of the week
+
+                WeatherDetails? weather = await ForecastClient.GetWeatherDataAsync(lat, lon, startDate, endDate);
+
+                if (weather is null || weather.daily is null || weather.daily.temperature_2m_mean is null)
+                {
+                    throw new Exception("Could not retrieve weather data on day range: " + startDate + " - " + endDate);
+                };
+
+                TemperaturesYearly.Add(weather.daily.temperature_2m_mean);
+            };
+
+            string LOG2 = "Temperatures for {0} fetched successfully.";
+            Console.WriteLine(string.Format(LOG2, foundLocation));
+
+            foreach (var DayTemp in WeeklyTemp)
+            {
+                List<double> dayTemps = new List<double>();
+                for (int i = 0; i < YEARS; i++)
+                {
+                    dayTemps.Add(TemperaturesYearly[i][WeeklyTemp.IndexOf(DayTemp)]);
+                }
+                DayTemp.Temperature = (float)dayTemps.Average();
+            };
+
+            isLoading = false;
+            success = true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            isLoading = false;
+        }
+    }
+
+}
