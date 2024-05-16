@@ -3,11 +3,11 @@ calculates the weather forecast for the next week based
 on temperatures from each year from the last 
 eight years.
 
-Projects use three APIs for Geolocation:
+Project uses three APIs for Geolocation:
 Geoapify
 Ninija API
-Geocode
+Geocode.
 
-and OpenMeteo for historical Weather Data.
+And OpenMeteo for historical Weather Data.
 
 This was my first encounter with making a project in C#.
